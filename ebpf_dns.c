@@ -1,14 +1,5 @@
 #include "ebpf_dns.h"
 
-#include <linux/bpf.h>
-#include <linux/if_ether.h>
-#include <linux/ip.h>
-#include <linux/udp.h>
-#include <linux/in.h>
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_endian.h>
-
-
 
 // Postive cache
 struct {
@@ -36,6 +27,7 @@ int ebpf_dns(struct xdp_md *ctx) {
     struct ethhdr *eth = data;
     struct iphdr *iph;
     struct udphdr *udph;
+    struct dnshdr *dnsh;
 
     //check if valid eth packet
     if (data + sizeof(*eth) > data_end)
@@ -63,22 +55,20 @@ int ebpf_dns(struct xdp_md *ctx) {
     if (udph->dest != bpf_htons(DNS_SERVER_PORT))
         return XDP_PASS;
 
-    bpf_printk("[xdp] DNS requst accepted, from: %x to: %x\n", iph->saddr, iph->daddr);
-
-
-    /*
-    bpf_printk("DNS requst: %d:%d -> %d:%d, protocol:%s\n", 
-            iph->saddr, udph->source, iph->daddr, udph->dest, proto_to_string(iph->protocol));
-
-	char src_ip[INET_ADDRSTRLEN], dst_ip[INET_ADDRSTRLEN];
-
-	inet_ntop(AF_INET, iph->saddr, src_ip, sizeof(src_ip));
-	inet_ntop(AF_INET, iph->daddr, dst_ip, sizeof(dst_ip));
-
-    bpf_trace_printk("DNS requst: %s:%d -> %s:%d, protocol:%s\n", 
-            src_ip, udph->source, dest_ip, udph->dest, proto_to_string(iph->protocol));
     
-    */
+    dnsh = (void *)udph + sizeof(*udph);
+
+    //check if valid dns header
+    if ((void *)dnsh + sizeof(*dnsh) > data_end)
+        return XDP_PASS;
+
+    #ifdef BPF_DEBUG
+    bpf_printk("[dnsh] DNS query id:%u, dnsh->qr:%c, dnsh->qdcount:%x\n", 
+            bpf_ntohs(dnsh->id), dnsh->qr ? '1': '0', bpf_ntohs(dnsh->qdcount));
+    #endif
+
+    
+
 
 
     return XDP_PASS;

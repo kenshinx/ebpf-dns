@@ -11,8 +11,9 @@ BPF_OBJ = $(BPF_PROG).o
 
 LIBBPF_INCLUDE ?= /usr/include/bpf
 
+BPF_DEBUG ?= $(BPF_DEBUG_OPEN)
 
-BPF_CFLAGS ?= $(WARN) $(OPT) $(DEBUG) $(CFLAGS)
+BPF_CFLAGS ?= $(WARN) $(OPT) $(DEBUG) $(BPF_DEBUG) $(CFLAGS) 
 BPF_CFLAGS += -I$(LIBBPF_INCLUDE)
 
 
@@ -26,6 +27,9 @@ clean:
 
 test:
 	@echo $(BPFCC) $(BPF_CFLAGS) -c $< -o $@
+
+debug:
+	$(MAKE) BPF_DEBUG_OPEN="-DBPF_DEBUG"
 
 
 .PHONY: all clean
