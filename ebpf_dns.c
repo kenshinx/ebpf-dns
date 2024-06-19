@@ -19,6 +19,8 @@ struct {
 } ncache_map SEC(".maps");
 
 
+static __always_inline int parse_dns_header(void *data, void *data_end, struct dns_header *header);
+
 SEC("XDP")
 int ebpf_dns(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
@@ -27,7 +29,8 @@ int ebpf_dns(struct xdp_md *ctx) {
     struct ethhdr *eth = data;
     struct iphdr *iph;
     struct udphdr *udph;
-    struct dnshdr *dnsh;
+    struct dns_flags *dnsf;
+    struct dns_header dnsh;
 
     //check if valid eth packet
     if (data + sizeof(*eth) > data_end)
@@ -54,18 +57,35 @@ int ebpf_dns(struct xdp_md *ctx) {
 
     if (udph->dest != bpf_htons(DNS_SERVER_PORT))
         return XDP_PASS;
-
     
-    dnsh = (void *)udph + sizeof(*udph);
-
-    //check if valid dns header
-    if ((void *)dnsh + sizeof(*dnsh) > data_end)
+    void *dns_payload = (void *)udph + sizeof(*udph);
+     
+    int header_length = 0;
+    header_length = parse_dns_header(dns_payload, data_end, &dnsh);
+    // check if valid dns header
+    if (header_length < 0) {
         return XDP_PASS;
+    }
+
+    dnsf = (struct dns_flags *)&dnsh.flags;
+
 
     #ifdef BPF_DEBUG
-    bpf_printk("[dnsh] DNS query id:%u, dnsh->qr:%c, dnsh->qdcount:%x\n", 
-            bpf_ntohs(dnsh->id), dnsh->qr ? '1': '0', bpf_ntohs(dnsh->qdcount));
+    bpf_printk("[dns header] DNS query id:%x, qr:%d, opcode:%d\n", dnsh.id, dnsf->qr, dnsf->opcode);
     #endif
+
+
+
+    //check this message is a query (0), response (1).
+    if (dnsf->qr != 0) {
+        return XDP_PASS;
+    }
+
+    //standard query opcode should be 0
+    if (dnsf->opcode != 0) {
+        return XDP_PASS;
+    }
+    
 
     
 
@@ -75,6 +95,22 @@ int ebpf_dns(struct xdp_md *ctx) {
 }
 
 
+static __always_inline int parse_dns_header(void *data, void *data_end, struct dns_header *header) {
+    //check if valid dns header
+    if (data + sizeof(*header) > data_end)
+        return -1;
+
+    __u8 *cursor = (__u8 *)data;
+
+    header->id = bpf_ntohs(*(__u16 *)(cursor));
+    header->flags = bpf_ntohs(*(__u16 *)(cursor + 2));
+    header->qdcount = bpf_ntohs(*(__u16 *)(cursor + 4));
+    header->ancount = bpf_ntohs(*(__u16 *)(cursor + 6));
+    header->nscount = bpf_ntohs(*(__u16 *)(cursor + 8));
+    header->arcount = bpf_ntohs(*(__u16 *)(cursor + 10));
+
+    return sizeof(*header);
+}
 
 
 char _license[] SEC("license") = "Dual MIT/GPL";

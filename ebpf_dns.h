@@ -15,8 +15,23 @@
 #define DEFAULT_CACHE_ENTRIES 10000 //Same as CoreDNS cache default capacity
 
 
-struct dnshdr {
-    __u16 id;
+/*
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|                      ID                       |
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|QR|   Opcode  |AA|TC|RD|RA|    Z   |   RCODE   |
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|                      QDCOUNT                  |
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|                      ANCOUNT                  |
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|                      NSCOUNT                  |
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+|                      ARCOUNT                  |
++--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+*/
+
+struct dns_flags {
     __u8 qr:1;
     __u8 opcode:4;
     __u8 aa:1;
@@ -25,6 +40,11 @@ struct dnshdr {
     __u8 ra:1;
     __u8 z:3;
     __u8 rcode:4;
+};
+
+struct dns_header {
+    __u16 id;
+    __u16 flags;
     __u16 qdcount;
     __u16 ancount;
     __u16 nscount;
