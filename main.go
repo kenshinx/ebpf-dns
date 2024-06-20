@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -30,9 +29,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading eBPF program: %v", err)
 	}
-
-	fmt.Println("sepc.Programs: %s", spec.Programs["ebpf_dns"])
-	fmt.Println("sepc.Maps: %s", spec.Maps["ncache_map"])
+	/*
+		for name, prog := range spec.Programs {
+			log.Printf("Program name: %s, Type: %v", name, prog.Type)
+		}
+	*/
 
 	coll, err := ebpf.NewCollection(spec)
 	if err != nil {
@@ -41,20 +42,13 @@ func main() {
 
 	defer coll.Close()
 
-	fmt.Println("collection: %s", coll)
-	for name := range coll.Programs {
-		fmt.Printf("Program in collection: %s", name)
-	}
-	xdpProg := coll.Programs[progName]
-	fmt.Println(xdpProg)
 	/*
-		var objs ebpf_dnsObjects
-		if err := loadEbpf_dnsObjects(&objs, nil); err != nil {
-			log.Fatal("Loading eBPF objects:", err)
+		for name := range coll.Programs {
+			fmt.Printf("Program in collection: %s", name)
 		}
-		defer objs.Close()
-
 	*/
+	xdpProg := coll.Programs[progName]
+
 	iface, err := net.InterfaceByName(iface_name)
 	if err != nil {
 		log.Fatalf("Error getting interface: %v", err)
@@ -68,13 +62,6 @@ func main() {
 		log.Fatalf("Error attaching XDP program: %v", err)
 	}
 	defer l.Close()
-
-	/*
-		cacheMap := collection.Maps[mapName]
-		if cacheMap == nil {
-			log.Fatalf("Map not found in collection")
-		}
-	*/
 
 	log.Println("eBPF DNS server is running...")
 

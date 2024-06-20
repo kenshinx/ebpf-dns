@@ -24,7 +24,7 @@ struct {
 static __always_inline int parse_dns_header(void *data, void *data_end, struct dns_header *header);
 static __always_inline int parse_dns_query(void *data, void *data_end, struct dns_query *query);
 
-SEC("XDP")
+SEC("xdp")
 int ebpf_dns(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
@@ -148,8 +148,8 @@ static __always_inline int parse_dns_query(void *data, void *data_end, struct dn
                 break;
             } 
             //query->qname[i++] = *cursor;
-            //bpf_printk("Cursor contents is: %u\n", *cursor);
-            //cursor++;
+            bpf_printk("Cursor contents is: %u\n", *cursor);
+            cursor++;
         }
 
         /*

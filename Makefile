@@ -17,7 +17,7 @@ BPF_CFLAGS ?= $(WARN) $(OPT) $(DEBUG) $(BPF_DEBUG) $(CFLAGS)
 BPF_CFLAGS += -I$(LIBBPF_INCLUDE)
 
 
-all: $(BPF_OBJ)
+bpf: $(BPF_OBJ)
 
 $(BPF_OBJ): $(BPF_PROG).c
 	$(BPFCC) $(BPF_CFLAGS) -c $< -o $@
@@ -31,8 +31,8 @@ test:
 debug:
 	$(MAKE) BPF_DEBUG_OPEN="-DBPF_DEBUG"
 
-go:
-	$(MAKE) debug && go build -o $(BPF_PROG) main.go
+all:
+	$(MAKE) clean && $(MAKE) debug && go build -o $(BPF_PROG) main.go
 
-.PHONY: all clean
+.PHONY: all clean debug
 
