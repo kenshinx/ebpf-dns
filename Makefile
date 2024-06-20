@@ -23,7 +23,7 @@ $(BPF_OBJ): $(BPF_PROG).c
 	$(BPFCC) $(BPF_CFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(BPF_OBJ)
+	rm -rf *.o $(BPF_PROG)
 
 test:
 	@echo $(BPFCC) $(BPF_CFLAGS) -c $< -o $@
@@ -31,6 +31,8 @@ test:
 debug:
 	$(MAKE) BPF_DEBUG_OPEN="-DBPF_DEBUG"
 
+go:
+	$(MAKE) debug && go build -o $(BPF_PROG) main.go
 
 .PHONY: all clean
 
