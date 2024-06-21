@@ -14,6 +14,14 @@
 #define DNS_SERVER_PORT 53
 #define DEFAULT_CACHE_ENTRIES 10000 //Same as CoreDNS cache default capacity
 
+#define QTYPE_A     1
+#define QTYPE_CNAME 5
+#define QTYPE_AAAA  28
+#define QTYPE_MX    15
+#define QTYPE_NS    2
+
+#define QCLASS_IN   1
+
 
 /*
 +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+

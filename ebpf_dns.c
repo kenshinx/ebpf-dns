@@ -86,14 +86,31 @@ int ebpf_dns(struct xdp_md *ctx) {
 
     void *query_payload = dns_payload + sizeof(dns_h);
 
-    if (parse_dns_query(query_payload, data_end, &dns_q) <0) {
+    if (parse_dns_query(query_payload, data_end, &dns_q) < 0) {
         return XDP_PASS;
     }
 
-    //bpf_printk("Query name: %s", dns_q.qname);
-    bpf_printk("xxxxxx\n");
-    
+	for (int i = 0; i < MAX_DOMAIN_LEN; i += 16) {
+        char chunk[17] = {};
+        __builtin_memcpy(chunk, &dns_q.qname[i], 16);
+        chunk[16] = '\0';  // Ensure null-termination
+        bpf_printk("%s\n", chunk);
+    }
 
+    #ifdef BPF_DEBUG
+    bpf_printk("[dns query] query type:%i, class:%i\n", dns_q.qtype, dns_q.qclass);
+    #endif
+    
+    //only A and AAAA query cache
+    if (dns_q.qtype != QTYPE_A && dns_q.qtype != QTYPE_AAAA) {
+        return XDP_PASS;
+    }
+
+    if (dns_q.qclass != QCLASS_IN) {
+        return XDP_PASS;
+    }
+
+    bpf_printk("[dns query] query type:%i, class:%i\n", dns_q.qtype, dns_q.qclass);
     return XDP_PASS;
 }
 
@@ -122,78 +139,49 @@ static __always_inline int parse_dns_query(void *data, void *data_end, struct dn
     query->qtype = 0;
     query->qclass = 0;
     __builtin_memcpy(query->qname, 0, sizeof(query->qname));
-
-    int i;
-    for (i = 0; i < MAX_DOMAIN_LEN; i++) {
-        if (cursor + 1 > end){
-            break;
-        }
-        
-        //reach the terminate label 0x00
-        if (*cursor == 0) {
-            break;
-        }
-
-        bpf_printk("Cursor contents is: %u\n", *cursor);
-        
-        int label_len = *cursor;
-        cursor++;
-
-        if (cursor + label_len >= end) {
-            return -1;
-        }
-
-        for (int j = 0; j < label_len; j++) {
-            if (i >= MAX_DOMAIN_LEN - 2) {
-                break;
-            } 
-            //query->qname[i++] = *cursor;
-            bpf_printk("Cursor contents is: %u\n", *cursor);
-            cursor++;
-        }
-
-        /*
-        for (int j = 0; j < label_len; j++) {
-            if (i >= MAX_DOMAIN_LEN - 2) {
-                break;
-            } 
-            query->qname[i++] = *cursor++;
-        }
-        query->qname[i++] = '.';
-        */
-    }
-    //query->qname[i - 1] = '\0';  // Null-terminate the domain name
-    /*
-    while ((void *)cursor < data_end && *cursor && i < MAX_DOMAIN_LEN - 1) {
-        bpf_printk("Cursor contents is: %u\n", *cursor);
-        int label_len = *cursor;
-        cursor++;
-        if ((void *)(cursor + label_len) >= data_end) {
-            return -1;
-        }
-
-        for (int j = 0; j < label_len; j++) {
-            if (i >= MAX_DOMAIN_LEN - 1) {
-                break;
-            } 
-            query->qname[i++] = *cursor++;
-        }
-        //query->qname[i++] = '.';
-    }
-    */
-    /*
-    query->qname[i - 1] = '\0';  // Null-terminate the domain name
-    cursor++; //skip the terminate null label 0x00
-
-    if ((void *)(cursor + 4) > data_end)
-        return -1;  // Ensure there's enough space for qtype and qclass
-
-    query->qtype = bpf_ntohs(*(__u16 *)cursor);
-    cursor += 2;
-    query->qclass = bpf_ntohs(*(__u16 *)(cursor));
-    */
     
-    return 0;
+    for (int i = 0; i < MAX_DOMAIN_LEN; i++) {
+
+        if (cursor + 1 > end) {            
+            return -1;
+        }
+
+        if (*cursor != 0) {
+            bpf_printk("cursor is: %d\n", *cursor);
+            query->qname[i++] = *cursor;
+            cursor++;
+
+            /*
+            if (i + label_len >= MAX_DOMAIN_LEN) {
+                return -1;
+            }
+
+            if (cursor + label_len > end) {
+                return -1;
+            }
+
+            for (int j = 0; j < label_len; j++) {
+                query->qname[i++] = *cursor;
+                cursor++;
+            }
+            */
+            
+            
+        } else { // reach the end
+            query->qname[i] = '\0';  // Null-terminate the domain name
+            if (cursor + 5 > end) {
+                return -1;  // Ensure there's enough space for qtype and qclass
+                
+            }
+            cursor++; //skip the terminate null label 0x00
+            query->qtype = bpf_ntohs(*(__u16 *)cursor);
+            cursor += 2;
+            query->qclass = bpf_ntohs(*(__u16 *)(cursor));
+            return 0;
+        }
+    }
+    
+    return -1;
 }
 
 char _license[] SEC("license") = "Dual MIT/GPL";
