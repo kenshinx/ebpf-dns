@@ -73,7 +73,7 @@ struct dns_header {
 struct dns_query {
     __u16 qtype;
     __u16 qclass;
-    char qname[MAX_DOMAIN_LEN];
+    __u8 qname[MAX_DOMAIN_LEN];
 };
 
 
