@@ -48,7 +48,7 @@ struct dns_flags {
     __u8 ra:1;
     __u8 z:3;
     __u8 rcode:4;
-};
+}__attribute__((packed));
 
 struct dns_header {
     __u16 id;
@@ -73,10 +73,18 @@ struct dns_header {
 struct dns_query {
     __u16 qtype;
     __u16 qclass;
-    __u8 qname[MAX_DOMAIN_LEN];
+    char  qname[MAX_DOMAIN_LEN];
 };
 
+struct resource_record {
+	char    name[MAX_DOMAIN_LEN];
+	__u16   rtype;
+    __u16   rclass;
+    __u32   ttl;
+    __u16   rdlength;
+};
 
 struct dns_response {
-    
+	__u16 rtype;
+	__u16 rcode;
 };

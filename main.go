@@ -21,47 +21,10 @@ const (
 
 func main() {
 
-	if err := rlimit.RemoveMemlock(); err != nil {
-		log.Fatal("Removing memlock:", err)
+	if err := loadXDPProgram(); err != nil {
+		log.Fatalf("Error load and attach eBPF program: %v", err)
+		return
 	}
-
-	spec, err := ebpf.LoadCollectionSpec(progPath)
-	if err != nil {
-		log.Fatalf("Error loading eBPF program: %v", err)
-	}
-	/*
-		for name, prog := range spec.Programs {
-			log.Printf("Program name: %s, Type: %v", name, prog.Type)
-		}
-	*/
-
-	coll, err := ebpf.NewCollection(spec)
-	if err != nil {
-		log.Fatalf("Error creating eBPF collection: %v", err)
-	}
-
-	defer coll.Close()
-
-	/*
-		for name := range coll.Programs {
-			fmt.Printf("Program in collection: %s", name)
-		}
-	*/
-	xdpProg := coll.Programs[progName]
-
-	iface, err := net.InterfaceByName(iface_name)
-	if err != nil {
-		log.Fatalf("Error getting interface: %v", err)
-	}
-
-	l, err := link.AttachXDP(link.XDPOptions{
-		Program:   xdpProg,
-		Interface: iface.Index,
-	})
-	if err != nil {
-		log.Fatalf("Error attaching XDP program: %v", err)
-	}
-	defer l.Close()
 
 	log.Println("eBPF DNS server is running...")
 
@@ -82,4 +45,46 @@ func main() {
 			return
 		}
 	}
+}
+
+func loadXDPProgram() (err error) {
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal("Removing memlock:", err)
+		return err
+	}
+
+	spec, err := ebpf.LoadCollectionSpec(progPath)
+	if err != nil {
+		log.Fatalf("Error loading eBPF program: %v", err)
+		return err
+	}
+
+	coll, err := ebpf.NewCollection(spec)
+	if err != nil {
+		log.Fatalf("Error creating eBPF collection: %v", err)
+		return err
+	}
+
+	defer coll.Close()
+
+	xdpProg := coll.Programs[progName]
+
+	iface, err := net.InterfaceByName(iface_name)
+	if err != nil {
+		log.Fatalf("Error getting interface: %v", err)
+		return err
+	}
+
+	l, err := link.AttachXDP(link.XDPOptions{
+		Program:   xdpProg,
+		Interface: iface.Index,
+	})
+	if err != nil {
+		log.Fatalf("Error attaching XDP program: %v", err)
+		return err
+	}
+	defer l.Close()
+
+	return nil
+
 }

@@ -31,6 +31,9 @@ test:
 debug:
 	$(MAKE) BPF_DEBUG_OPEN="-DBPF_DEBUG"
 
+go:
+	go build -o $(BPF_PROG) main.go
+
 all:
 	$(MAKE) clean && $(MAKE) debug && go build -o $(BPF_PROG) main.go
 
