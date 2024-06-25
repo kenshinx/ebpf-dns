@@ -103,7 +103,7 @@ int ebpf_dns(struct xdp_md *ctx) {
     }
 
     #ifdef BPF_DEBUG
-    bpf_printk("[dns query] query type:%i, class:%i, qname_len:%d\n", dns_q.qtype, dns_q.qclass, qname_len);
+    bpf_printk("[dns query] qtype:%i, qclass:%i, qname_len:%d\n", dns_q.qtype, dns_q.qclass, qname_len);
     #endif
     
     //only A and AAAA query cache
