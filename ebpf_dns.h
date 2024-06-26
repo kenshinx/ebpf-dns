@@ -10,6 +10,7 @@
 #define DNS_AAAA_RECORD 28
 
 #define MAX_DOMAIN_LEN 256
+#define MAX_DNS_PACKET_SIZE 512
 
 #define DNS_SERVER_PORT 53
 #define DEFAULT_CACHE_ENTRIES 10000 //Same as CoreDNS cache default capacity
@@ -85,6 +86,6 @@ struct resource_record {
 };
 
 struct dns_response {
-	__u16 rtype;
-	__u16 rcode;
+    char data[MAX_DNS_PACKET_SIZE];
+	__u32 expire;
 };

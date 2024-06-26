@@ -16,7 +16,7 @@ type cachesKey struct {
 
 type cacheValue struct {
 	Data   [MaxDNSPacketSize]byte
-	Expire int64 //cache expire time.
+	Expire uint32 //cache expire time.
 }
 
 func NewDNSHandler(pcache *ebpf.Map, ncache *ebpf.Map) *DNSHandler {
@@ -91,7 +91,7 @@ func (h *DNSHandler) setCache(cache *ebpf.Map, q *dns.Question, r *dns.Msg) {
 	}
 
 	expire := time.Now().Add(time.Second * time.Duration(ttl)).Unix()
-	value.Expire = expire
+	value.Expire = uint32(expire)
 
 	buf, err := r.Pack()
 	if err != nil {

@@ -2,12 +2,15 @@ package main
 
 import (
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/rlimit"
 	"github.com/miekg/dns"
 )
 
@@ -29,51 +32,51 @@ const (
 
 func main() {
 
-	// if err := rlimit.RemoveMemlock(); err != nil {
-	// 	log.Fatal("Removing memlock:", err)
-	// }
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal("Removing memlock:", err)
+	}
 
-	// spec, err := ebpf.LoadCollectionSpec(progPath)
-	// if err != nil {
-	// 	log.Fatalf("Error loading eBPF program: %v", err)
-	// }
+	spec, err := ebpf.LoadCollectionSpec(progPath)
+	if err != nil {
+		log.Fatalf("Error loading eBPF program: %v", err)
+	}
 
-	// coll, err := ebpf.NewCollection(spec)
-	// if err != nil {
-	// 	log.Fatalf("Error creating eBPF collection: %v", err)
-	// }
+	coll, err := ebpf.NewCollection(spec)
+	if err != nil {
+		log.Fatalf("Error creating eBPF collection: %v", err)
+	}
 
-	// defer coll.Close()
+	defer coll.Close()
 
-	// xdpProg := coll.Programs[progName]
+	xdpProg := coll.Programs[progName]
 
-	// iface, err := net.InterfaceByName(iface_name)
-	// if err != nil {
-	// 	log.Fatalf("Error getting interface: %v", err)
-	// }
+	iface, err := net.InterfaceByName(iface_name)
+	if err != nil {
+		log.Fatalf("Error getting interface: %v", err)
+	}
 
-	// l, err := link.AttachXDP(link.XDPOptions{
-	// 	Program:   xdpProg,
-	// 	Interface: iface.Index,
-	// })
-	// if err != nil {
-	// 	log.Fatalf("Error attaching XDP program: %v", err)
-	// }
-	// defer l.Close()
+	l, err := link.AttachXDP(link.XDPOptions{
+		Program:   xdpProg,
+		Interface: iface.Index,
+	})
+	if err != nil {
+		log.Fatalf("Error attaching XDP program: %v", err)
+	}
+	defer l.Close()
 
-	// log.Println("Load XDP progrom and attach into kernel success.")
+	log.Println("Load XDP progrom and attach into kernel success.")
 
-	// pCache, ok := coll.Maps[pCacheMapName]
-	// if !ok {
-	// 	log.Fatalf("Error getting pcache ebpf map failed")
-	// }
+	pCache, ok := coll.Maps[pCacheMapName]
+	if !ok {
+		log.Fatalf("Error getting pcache ebpf map failed")
+	}
 
-	// nCache, ok := coll.Maps[nCacheMapName]
-	// if !ok {
-	// 	log.Fatalf("Error getting pcache ebpf map failed")
-	// }
+	nCache, ok := coll.Maps[nCacheMapName]
+	if !ok {
+		log.Fatalf("Error getting pcache ebpf map failed")
+	}
 
-	pCache, nCache := &ebpf.Map{}, &ebpf.Map{}
+	//pCache, nCache := &ebpf.Map{}, &ebpf.Map{}
 
 	handler := NewDNSHandler(pCache, nCache)
 
