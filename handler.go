@@ -1,12 +1,23 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/miekg/dns"
 )
+
+type cachesKey struct {
+	QName  [MaxDomainLength]byte
+	QType  uint16
+	QClass uint16
+}
+
+type cacheValue struct {
+	Data   [MaxDNSPacketSize]byte
+	Expire int64 //cache expire time.
+}
 
 func NewDNSHandler(pcache *ebpf.Map, ncache *ebpf.Map) *DNSHandler {
 
@@ -28,7 +39,7 @@ func (h *DNSHandler) Do(w dns.ResponseWriter, req *dns.Msg) {
 
 	q := req.Question[0]
 
-	log.Printf("Get DNS request, qname:%s, qtype:%d, qclass:%d", q.Name, q.Qtype, q.Qclass)
+	log.Printf("get DNS request, qname:%s, qtype:%d, qclass:%d", q.Name, q.Qtype, q.Qclass)
 
 	r, err := h.forwardRequest(req)
 	if err != nil {
@@ -39,9 +50,9 @@ func (h *DNSHandler) Do(w dns.ResponseWriter, req *dns.Msg) {
 
 	switch r.Rcode {
 	case dns.RcodeSuccess:
-		fmt.Println("Beigin postive cache")
+		h.setPosCache(&q, r)
 	case dns.RcodeNameError, dns.RcodeServerFailure:
-		fmt.Println("Beigin negtive cache")
+		h.setNegCache(&q, r)
 	}
 
 	w.WriteMsg(r)
@@ -56,10 +67,68 @@ func (h *DNSHandler) forwardRequest(req *dns.Msg) (*dns.Msg, error) {
 	return response, err
 }
 
-func (h *DNSHandler) setPosCache(*dns.Msg) {
+func (h *DNSHandler) setPosCache(q *dns.Question, r *dns.Msg) {
+	log.Printf("beigin positive Cache for %s\n", q.Name)
+	h.setCache(h.pcache, q, r)
+}
+
+func (h *DNSHandler) setNegCache(q *dns.Question, r *dns.Msg) {
+	log.Printf("begin negtive cache for %s\n", q.Name)
+	h.setCache(h.ncache, q, r)
+}
+
+func (h *DNSHandler) setCache(cache *ebpf.Map, q *dns.Question, r *dns.Msg) {
+
+	var value cacheValue
+
+	key := h.makekey(q)
+
+	ttl := h.getMinTTL(r)
+
+	if ttl <= 0 {
+		log.Printf("ttl too small: %d, skip cache\n", ttl)
+		return
+	}
+
+	expire := time.Now().Add(time.Second * time.Duration(ttl)).Unix()
+	value.Expire = expire
+
+	buf, err := r.Pack()
+	if err != nil {
+		log.Printf("failed to serialize DNS response: %v", err)
+		return
+	}
+
+	if len(buf) > len(value.Data) {
+		log.Printf("response too large to cache, %d", len(buf))
+		return
+	}
+
+	copy(value.Data[:], buf)
+
+	err = cache.Update(key, value, ebpf.UpdateAny)
+	if err != nil {
+		log.Printf("failed to update LRU Hash Map: %v", err)
+	}
+
+	log.Printf("set cache success, key:%s, cache size:%d, ttl:%d, expired at %d\n", key.QName, len(buf), ttl, expire)
 
 }
 
-func (h *DNSHandler) setNegCache(*dns.Msg) {
+func (h *DNSHandler) makekey(q *dns.Question) cachesKey {
+	var key cachesKey
+	copy(key.QName[:], q.Name)
+	key.QType = q.Qtype
+	key.QClass = q.Qclass
+	return key
+}
 
+func (h *DNSHandler) getMinTTL(msg *dns.Msg) uint32 {
+	minTTL := uint32(MaxTTL)
+	for _, rr := range msg.Answer {
+		if rr.Header().Ttl < minTTL {
+			minTTL = rr.Header().Ttl
+		}
+	}
+	return minTTL
 }
