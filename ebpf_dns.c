@@ -9,14 +9,6 @@ struct {
     __type(key, struct dns_query);
     __type(value, struct dns_response);
 } pcache_map SEC(".maps");
-/*
-struct bpf_map_def SEC("maps") pcache_map = {
-    .type = BPF_MAP_TYPE_LRU_HASH,
-    .key_size = sizeof(struct dns_query),
-    .value_size = sizeof(struct dns_response),
-    .max_entries = DEFAULT_CACHE_ENTRIES,
-};
-*/
 
 // Negative cache
 struct {
@@ -210,7 +202,6 @@ static __always_inline int parse_dns_query(void *data, void *data_end, struct dn
         cursor++;
 
     }
-
 
 
     return -1;

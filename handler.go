@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/cilium/ebpf"
@@ -9,14 +11,15 @@ import (
 )
 
 type cachesKey struct {
-	QName  [MaxDomainLength]byte
 	QType  uint16
 	QClass uint16
+	QName  [MaxDomainLength]byte
 }
 
 type cacheValue struct {
-	Data   [MaxDNSPacketSize]byte
-	Expire uint32 //cache expire time.
+	DataLength uint32
+	Data       [MaxDNSPacketSize]byte
+	Expire     uint64 //cache expire time.
 }
 
 func NewDNSHandler(pcache *ebpf.Map, ncache *ebpf.Map) *DNSHandler {
@@ -91,7 +94,7 @@ func (h *DNSHandler) setCache(cache *ebpf.Map, q *dns.Question, r *dns.Msg) {
 	}
 
 	expire := time.Now().Add(time.Second * time.Duration(ttl)).Unix()
-	value.Expire = uint32(expire)
+	value.Expire = uint64(expire)
 
 	buf, err := r.Pack()
 	if err != nil {
@@ -100,15 +103,17 @@ func (h *DNSHandler) setCache(cache *ebpf.Map, q *dns.Question, r *dns.Msg) {
 	}
 
 	if len(buf) > len(value.Data) {
-		log.Printf("response too large to cache, %d", len(buf))
+		log.Printf("response too large to cache, size: %d", len(buf))
 		return
 	}
 
+	value.DataLength = uint32(len(buf))
 	copy(value.Data[:], buf)
 
 	err = cache.Update(key, value, ebpf.UpdateAny)
 	if err != nil {
 		log.Printf("failed to update LRU Hash Map: %v", err)
+		return
 	}
 
 	log.Printf("set cache success, key:%s, cache size:%d, ttl:%d, expired at %d\n", key.QName, len(buf), ttl, expire)
@@ -117,9 +122,14 @@ func (h *DNSHandler) setCache(cache *ebpf.Map, q *dns.Question, r *dns.Msg) {
 
 func (h *DNSHandler) makekey(q *dns.Question) cachesKey {
 	var key cachesKey
-	copy(key.QName[:], q.Name)
+
 	key.QType = q.Qtype
 	key.QClass = q.Qclass
+
+	byteName := h.domainToDNSBytes(q.Name)
+	// fmt.Println("[]byte: %v", byteName)
+	copy(key.QName[:], byteName)
+
 	return key
 }
 
@@ -131,4 +141,21 @@ func (h *DNSHandler) getMinTTL(msg *dns.Msg) uint32 {
 		}
 	}
 	return minTTL
+}
+
+// convert www.example.com to []byte{3 119 119 119 7 101 120 97 109 112 108 101 3 99 111 109 0}
+func (h *DNSHandler) domainToDNSBytes(domain string) []byte {
+	var buf bytes.Buffer
+
+	//convert www.example.com. to www.example.com
+	domain = strings.TrimSuffix(domain, ".")
+
+	parts := strings.Split(domain, ".")
+	for _, part := range parts {
+		buf.WriteByte(byte(len(part)))
+		buf.WriteString(part)
+	}
+	buf.WriteByte(0) // endwith 0
+
+	return buf.Bytes()
 }
