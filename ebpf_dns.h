@@ -24,7 +24,8 @@
 #define QCLASS_IN   1
 
 
-/*
+/* DNS Flags packet
+  0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
 +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 |                      ID                       |
 +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
@@ -60,7 +61,8 @@ struct dns_header {
     __u16 arcount;
 };
 
-/*
+/* DNS Query packet
+  0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
 +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 |                                               |
 /                    QNAME                      /
@@ -77,6 +79,36 @@ struct dns_query {
     char  qname[MAX_DOMAIN_LEN];
 };
 
+
+struct dns_cache_msg {
+    __u32 data_len;
+    char data[MAX_DNS_PACKET_SIZE];
+	__u64 expire;
+}__attribute__((packed));
+
+
+/* DNS resource record 
+      0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                                               |
+    /                                               /
+    /                      NAME                     /
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TYPE                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                     CLASS                     |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                      TTL                      |
+    |                                               |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+    |                   RDLENGTH                    |
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
+    /                     RDATA                     /
+    /                                               /
+    +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+
+*/
 struct resource_record {
 	char    name[MAX_DOMAIN_LEN];
 	__u16   rtype;
@@ -84,9 +116,3 @@ struct resource_record {
     __u32   ttl;
     __u16   rdlength;
 };
-
-struct dns_cache_msg {
-    __u32 data_len;
-    char data[MAX_DNS_PACKET_SIZE];
-	__u64 expire;
-}__attribute__((packed));

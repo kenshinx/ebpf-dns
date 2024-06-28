@@ -21,7 +21,7 @@ struct {
 
 static __always_inline int parse_dns_header(void *data, void *data_end, struct dns_header *header);
 static __always_inline int parse_dns_query(void *data, void *data_end, struct dns_query *query);
-static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg *msg);
+static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg **msg);
 static __always_inline __u64 get_current_timestamp();
 #ifdef BPF_DEBUG
 static __always_inline void print_qname(char *qname, int qname_len);
@@ -38,7 +38,7 @@ int ebpf_dns(struct xdp_md *ctx) {
     struct dns_flags *dns_f;
     struct dns_header dns_h;
     struct dns_query dns_q;
-    struct dns_cache_msg dns_msg;
+    struct dns_cache_msg *dns_msg;
 
     //check if valid eth packet
     if (data + sizeof(*eth) > data_end)
@@ -115,10 +115,19 @@ int ebpf_dns(struct xdp_md *ctx) {
     
 
     int hit = dns_cache_lookup(&dns_q, &dns_msg);
+    if (hit < 0) {
+        bpf_printk("[dns cache] fail find valid dns cache\n");
+        return XDP_PASS;
+    }
+
+    bpf_printk("[dns cache] success find valid dns cache\n");
+
 
     
+    __u16 resp_id;
+    __builtin_memcpy(&resp_id, dns_msg->data, sizeof(__u16));
     
-    bpf_printk("Hit is :%d\n", hit);
+    bpf_printk("cache id:%d expire is :%ld, data_len:%d \n", bpf_ntohs(resp_id), dns_msg->expire, dns_msg->data_len);
     return XDP_PASS;
 }
 
@@ -208,7 +217,7 @@ static __always_inline int parse_dns_query(void *data, void *data_end, struct dn
     return -1;
 }
 
-static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg *msg) {
+static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg **msg) {
 
     struct dns_cache_msg *value;
 	
@@ -235,10 +244,6 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
             bpf_printk("cache over max dns packet size:%d\n", value->data_len);
             return -1;
         }
-
-        __builtin_memcpy(msg->data, value->data, value->data_len);
-        msg->data_len = value->data_len;
-        msg->expire = value->expire;
 
         return 0;
     }
