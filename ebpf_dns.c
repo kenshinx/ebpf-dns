@@ -7,7 +7,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, DEFAULT_CACHE_ENTRIES);
     __type(key, struct dns_query);
-    __type(value, struct dns_response);
+    __type(value, struct dns_cache_msg);
 } pcache_map SEC(".maps");
 
 // Negative cache
@@ -15,13 +15,14 @@ struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, DEFAULT_CACHE_ENTRIES);
     __type(key, struct dns_query);
-    __type(value, struct dns_response);
+    __type(value, struct dns_cache_msg);
 } ncache_map SEC(".maps");
 
 
 static __always_inline int parse_dns_header(void *data, void *data_end, struct dns_header *header);
 static __always_inline int parse_dns_query(void *data, void *data_end, struct dns_query *query);
-static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_response *response);
+static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg *msg);
+static __always_inline __u64 get_current_timestamp();
 #ifdef BPF_DEBUG
 static __always_inline void print_qname(char *qname, int qname_len);
 #endif
@@ -37,7 +38,7 @@ int ebpf_dns(struct xdp_md *ctx) {
     struct dns_flags *dns_f;
     struct dns_header dns_h;
     struct dns_query dns_q;
-    struct dns_response dns_r;
+    struct dns_cache_msg dns_msg;
 
     //check if valid eth packet
     if (data + sizeof(*eth) > data_end)
@@ -113,7 +114,7 @@ int ebpf_dns(struct xdp_md *ctx) {
 	#endif
     
 
-    int hit = dns_cache_lookup(&dns_q, &dns_r);
+    int hit = dns_cache_lookup(&dns_q, &dns_msg);
 
     
     
@@ -207,25 +208,42 @@ static __always_inline int parse_dns_query(void *data, void *data_end, struct dn
     return -1;
 }
 
-static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_response *response) {
+static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg *msg) {
 
-    void *r;
+    struct dns_cache_msg *value;
 	
-    r = bpf_map_lookup_elem(&pcache_map, query);
-    if (r) {
+    value = bpf_map_lookup_elem(&pcache_map, query);
+    if (value) {
         bpf_printk("DNS positive cache hitted");
-        return 0;
-    } 
+    } else {
+        value = bpf_map_lookup_elem(&ncache_map, query);
+        if (value) {
+            bpf_printk("DNS negtive cache hitted");
+        } 
+    }
 
-	r = bpf_map_lookup_elem(&ncache_map, query);
-    if (r) {
-        bpf_printk("DNS negtive cache hitted");
+    if (value) { //cache hitted
+        __u64 time_now = get_current_timestamp();
+        #ifdef BPF_DEBUG
+        bpf_printk("time_now:%ld,  expire:%ld\n", time_now, value->expire);
+        #endif 
+        if (value->expire <= time_now) {
+            bpf_printk("cache has expired at:%d\n", value->expire);
+            return -1;
+        }
+        if (value->data_len > MAX_DNS_PACKET_SIZE) {
+            bpf_printk("cache over max dns packet size:%d\n", value->data_len);
+            return -1;
+        }
+
+        __builtin_memcpy(msg->data, value->data, value->data_len);
+        msg->data_len = value->data_len;
+        msg->expire = value->expire;
+
         return 0;
-    } 
+    }
 	
-
-    bpf_printk("DNS query missed");
-    
+    bpf_printk("DNS query cache missed");
      
     return -1;
 }
@@ -253,5 +271,12 @@ static __always_inline void print_qname(char *qname, int qname_len) {
 
 }
 #endif
+
+static __always_inline __u64 get_current_timestamp() {
+    __u64 time_ns = bpf_ktime_get_ns(); //return current time since system boot
+    __u64 time_s = time_ns / 1000000000; //convert nanosecond to second
+    return time_s;
+}
+    
 
 char _license[] SEC("license") = "Dual MIT/GPL";

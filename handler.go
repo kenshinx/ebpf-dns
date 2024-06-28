@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/miekg/dns"
+	"github.com/shirou/gopsutil/host"
 )
 
 type cachesKey struct {
@@ -93,8 +93,15 @@ func (h *DNSHandler) setCache(cache *ebpf.Map, q *dns.Question, r *dns.Msg) {
 		return
 	}
 
-	expire := time.Now().Add(time.Second * time.Duration(ttl)).Unix()
-	value.Expire = uint64(expire)
+	//expire := time.Now().Add(time.Second * time.Duration(ttl)).Unix()
+	//NOTICE: expire time calculate since system boot time rather than since "1970010101", because ebpf kernel can't get current UTC time.
+	uptime, err := host.Uptime()
+	if err != nil {
+		log.Printf("failed to get system boot time: %v", err)
+		return
+	}
+	expire := uptime + uint64(ttl) //unit: second
+	value.Expire = expire
 
 	buf, err := r.Pack()
 	if err != nil {

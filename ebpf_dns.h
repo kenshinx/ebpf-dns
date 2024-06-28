@@ -85,8 +85,8 @@ struct resource_record {
     __u16   rdlength;
 };
 
-struct dns_response {
-    __u32 dlength;
+struct dns_cache_msg {
+    __u32 data_len;
     char data[MAX_DNS_PACKET_SIZE];
 	__u64 expire;
 }__attribute__((packed));
