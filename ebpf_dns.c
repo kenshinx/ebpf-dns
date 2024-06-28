@@ -122,12 +122,47 @@ int ebpf_dns(struct xdp_md *ctx) {
 
     bpf_printk("[dns cache] success find valid dns cache\n");
 
+    //begin construct dns response packet from cache data
 
+    //replace cached transcation id to  request packet's transcation id
+    __u16 req_id;
+    req_id = bpf_htons(dns_h.id);
+    __builtin_memcpy(dns_msg->data, &req_id, sizeof(__u16));
     
     __u16 resp_id;
     __builtin_memcpy(&resp_id, dns_msg->data, sizeof(__u16));
     
-    bpf_printk("cache id:%d expire is :%ld, data_len:%d \n", bpf_ntohs(resp_id), dns_msg->expire, dns_msg->data_len);
+    __u16 dns_pkg_len = dns_msg->data_len;
+
+    // Calculate the new packet size
+    //int delta = dns_payload + dns_pkg_len - data_end;
+    __u16 old_udp_len = bpf_ntohs(udph->len);
+    __u16 new_udp_len = sizeof(*udph) + dns_pkg_len;
+    int delta = new_udp_len - old_udp_len;
+
+    
+    #ifdef BPF_DEBUG
+    bpf_printk("resp id :%d , resp length :%d, delta:%d\n", bpf_ntohs(resp_id), dns_pkg_len, delta);
+    #endif
+
+    //adjust tail to fit the new DNS response
+    if (bpf_xdp_adjust_tail(ctx, delta)){
+        return XDP_PASS;
+    }
+
+    //after bpf_xdp_adjust_tail called, data_end will be changed
+    data_end = (void *)(unsigned long)ctx->data_end;
+
+    if (dns_payload + dns_pkg_len > data_end) {
+        return XDP_PASS;
+    }
+    
+    
+    bpf_printk("dns_payload:%x , data_end:%x, delta:%d\n", dns_payload, data_end, delta);
+    
+    
+    
+    
     return XDP_PASS;
 }
 
@@ -244,6 +279,8 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
             bpf_printk("cache over max dns packet size:%d\n", value->data_len);
             return -1;
         }
+
+        *msg = value;
 
         return 0;
     }
