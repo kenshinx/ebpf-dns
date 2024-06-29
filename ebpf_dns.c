@@ -25,10 +25,11 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
 static __always_inline __u64 get_current_timestamp();
 static __always_inline void copy_dns_packet(struct xdp_md *ctx, void *dst, void *src, __u16 len);
 static __always_inline void update_ip_checksum(struct iphdr *iph);
-static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end);
+//static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, __u16 udp_len, void *data);
 static __always_inline void swap_ip_addresses(struct iphdr *iph);
 static __always_inline void swap_port(struct udphdr *udph);
 static __always_inline void swap_mac_addresses(struct ethhdr *eth);
+//static __always_inline __u16 csum_fold_helper(__u32 csum);
 //static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const void *src, __u16 len);
 #ifdef BPF_DEBUG
 static __always_inline void print_qname(char *qname, int qname_len);
@@ -208,15 +209,12 @@ int ebpf_dns(struct xdp_md *ctx) {
     update_ip_checksum(iph);
 
 	// Update the UDP checksum
-	update_udp_checksum(iph, udph, data_end);
+	//update_udp_checksum(iph, udph, new_udp_len, data_end);
 
     swap_mac_addresses(eth);
 
 
-    bpf_printk("dns_payload:%x , data_end:%x, delta:%d\n", dns_payload, data_end, delta);
-    
-    
-    
+    bpf_printk("[dns response] return dns packets to client from kernel directly");
     
     return XDP_TX;
 }
@@ -313,11 +311,11 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
 	
     value = bpf_map_lookup_elem(&pcache_map, query);
     if (value) {
-        bpf_printk("DNS positive cache hitted");
+        bpf_printk("[dns cache] DNS positive cache hitted");
     } else {
         value = bpf_map_lookup_elem(&ncache_map, query);
         if (value) {
-            bpf_printk("DNS negtive cache hitted");
+            bpf_printk("[dns cache] DNS negtive cache hitted");
         } 
     }
 
@@ -340,7 +338,7 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
         return 0;
     }
 	
-    bpf_printk("DNS query cache missed");
+    bpf_printk("[dns cache] DNS query cache missed");
      
     return -1;
 }
@@ -444,40 +442,44 @@ static __always_inline void update_ip_checksum(struct iphdr *iph) {
     iph->check = ~csum;
 }
 
-static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end)
+/*
+static __always_inline __u16 csum_fold_helper(__u32 csum)
 {
-    __u32 csum_buffer = 0;
-    __u16 *buf = (void *)udph;
-
-    // Compute pseudo-header checksum
-    csum_buffer += (__u16)iph->saddr;
-    csum_buffer += (__u16)(iph->saddr >> 16);
-    csum_buffer += (__u16)iph->daddr;
-    csum_buffer += (__u16)(iph->daddr >> 16);
-    csum_buffer += (__u16)iph->protocol << 8;
-    csum_buffer += udph->len;
-
-    // Compute checksum on udp header + payload
-    for (int i = 0; i < MAX_DNS_PACKET_SIZE; i += 2) {
-        if ((void *)(buf + 1) > data_end) 
-        {
-            break;
-        }
-
-        csum_buffer += *buf;
-        buf++;
-    }
-
-    if ((void *)buf + 1 <= data_end) {
-        // In case payload is not 2 bytes aligned
-        csum_buffer += *(__u8 *)buf;
-    }
-
-    __u16 csum = (__u16)csum_buffer + (__u16)(csum_buffer >> 16);
-    csum = ~csum;
-
-	udph->check = csum;
+    __u32 sum;
+    sum = (csum & 0xffff) + (csum >> 16);
+    sum = (sum & 0xffff) + (sum >> 16);
+    return ~sum;
 }
+*/
+
+/*
+static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, __u16 udp_len, void *data_end)
+{
+	udph->check = 0;
+
+    __u32 csum = 0;
+    __u16 *udp_header = (__u16 *)udph;
+
+    for (int i = 0; i < udp_len / 2; i++) {
+        if ((void *)(udp_header + i + 1) > data_end)
+            return; // Drop packet if out of bounds
+        csum += udp_header[i];
+    }
+
+    if (udp_len & 1) {
+        if ((void *)(udp_header + udp_len / 2 + 1) > data_end)
+            return; // Drop packet if out of bounds
+        csum += ((__u8 *)udp_header)[udp_len - 1];
+    }
+
+    csum += (__u32)(iph->saddr >> 16) + (__u32)(iph->saddr & 0xffff);
+    csum += (__u32)(iph->daddr >> 16) + (__u32)(iph->daddr & 0xffff);
+    csum += (__u32)iph->protocol << 8;
+    csum += udp_len;
+
+    udph->check = csum_fold_helper(csum);
+}
+*/
 
 static __always_inline void swap_ip_addresses(struct iphdr *iph) {
     __u32 src_ip = iph->saddr;

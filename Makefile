@@ -35,7 +35,7 @@ go:
 	go build -o $(BPF_PROG)
 
 all:
-	$(MAKE) clean && $(MAKE) debug && go build -o $(BPF_PROG)
+	$(MAKE) clean && $(MAKE) && go build -o $(BPF_PROG)
 
 .PHONY: all clean debug
 
