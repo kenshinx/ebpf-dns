@@ -24,6 +24,8 @@ static __always_inline int parse_dns_query(void *data, void *data_end, struct dn
 static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg **msg);
 static __always_inline __u64 get_current_timestamp();
 static __always_inline void copy_dns_packet(struct xdp_md *ctx, void *dst, void *src, __u16 len);
+static __always_inline void update_ip_checksum(struct iphdr *iph);
+static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end);
 //static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const void *src, __u16 len);
 #ifdef BPF_DEBUG
 static __always_inline void print_qname(char *qname, int qname_len);
@@ -186,20 +188,39 @@ int ebpf_dns(struct xdp_md *ctx) {
 
     //Update UDP header
     udph->len = bpf_htons(new_udp_len);
-    udph->check = 0; 
+    //udph->check = 0; 
     
     //Update IP header
     __u16 new_ip_len = sizeof(*iph) + new_udp_len;
     iph->tot_len = bpf_htons(new_ip_len);
     iph->check = 0;
 
+    //Swap the src and dst IP
+    __u32 src_ip = iph->saddr;
+    __u32 dst_ip = iph->daddr;
+    iph->saddr = dst_ip;
+    iph->daddr = src_ip;
+
+	// Swap the src and dst UDP ports
+    __u16 src_port = udph->source;
+    __u16 dst_port = udph->dest;
+    udph->source = dst_port;
+    udph->dest = src_port;
+
+	// Update the IP checksum
+    update_ip_checksum(iph);
+
+	// Update the UDP checksum
+	update_udp_checksum(iph, udph, data_end);
+
+    swap_mac_addresses((struct eth_hdr *)eth);
 
     bpf_printk("dns_payload:%x , data_end:%x, delta:%d\n", dns_payload, data_end, delta);
     
     
     
     
-    return XDP_PASS;
+    return XDP_TX;
 }
 
 
@@ -408,5 +429,57 @@ static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const voi
 }
 */
     
+static __always_inline void update_ip_checksum(struct iphdr *iph) {
+    __u32 csum = 0;
+    __u16 *ip_header = (__u16 *)iph;
+
+    iph->check = 0;
+
+    for (int i = 0; i < sizeof(struct iphdr) / 2; i++) {
+        csum += ip_header[i];
+    }
+
+    while (csum >> 16) {
+        csum = (csum & 0xffff) + (csum >> 16);
+    }
+
+    iph->check = ~csum;
+}
+
+static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end)
+{
+    __u32 csum_buffer = 0;
+    __u16 *buf = (void *)udph;
+
+    // Compute pseudo-header checksum
+    csum_buffer += (__u16)iph->saddr;
+    csum_buffer += (__u16)(iph->saddr >> 16);
+    csum_buffer += (__u16)iph->daddr;
+    csum_buffer += (__u16)(iph->daddr >> 16);
+    csum_buffer += (__u16)iph->protocol << 8;
+    csum_buffer += udph->len;
+
+    // Compute checksum on udp header + payload
+    for (int i = 0; i < MAX_DNS_PACKET_SIZE; i += 2) {
+        if ((void *)(buf + 1) > data_end) 
+        {
+            break;
+        }
+
+        csum_buffer += *buf;
+        buf++;
+    }
+
+    if ((void *)buf + 1 <= data_end) {
+        // In case payload is not 2 bytes aligned
+        csum_buffer += *(__u8 *)buf;
+    }
+
+    __u16 csum = (__u16)csum_buffer + (__u16)(csum_buffer >> 16);
+    csum = ~csum;
+
+	udph->check = csum;
+}
+
 
 char _license[] SEC("license") = "Dual MIT/GPL";
