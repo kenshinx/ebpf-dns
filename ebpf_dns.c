@@ -25,7 +25,9 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
 static __always_inline __u64 get_current_timestamp();
 static __always_inline void copy_dns_packet(struct xdp_md *ctx, void *dst, void *src, __u16 len);
 static __always_inline void update_ip_checksum(struct iphdr *iph);
-//static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end);
+static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end);
+static __always_inline void swap_ip_addresses(struct iphdr *iph);
+static __always_inline void swap_port(struct udphdr *udph);
 static __always_inline void swap_mac_addresses(struct ethhdr *eth);
 //static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const void *src, __u16 len);
 #ifdef BPF_DEBUG
@@ -197,22 +199,16 @@ int ebpf_dns(struct xdp_md *ctx) {
     iph->check = 0;
 
     //Swap the src and dst IP
-    __u32 src_ip = iph->saddr;
-    __u32 dst_ip = iph->daddr;
-    iph->saddr = dst_ip;
-    iph->daddr = src_ip;
+    swap_ip_addresses(iph);
 
 	// Swap the src and dst UDP ports
-    __u16 src_port = udph->source;
-    __u16 dst_port = udph->dest;
-    udph->source = dst_port;
-    udph->dest = src_port;
+    swap_port(udph);
 
 	// Update the IP checksum
     update_ip_checksum(iph);
 
 	// Update the UDP checksum
-	//update_udp_checksum(iph, udph, data_end);
+	update_udp_checksum(iph, udph, data_end);
 
     swap_mac_addresses(eth);
 
@@ -448,7 +444,6 @@ static __always_inline void update_ip_checksum(struct iphdr *iph) {
     iph->check = ~csum;
 }
 
-/*
 static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end)
 {
     __u32 csum_buffer = 0;
@@ -483,7 +478,20 @@ static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr
 
 	udph->check = csum;
 }
-*/
+
+static __always_inline void swap_ip_addresses(struct iphdr *iph) {
+    __u32 src_ip = iph->saddr;
+    __u32 dst_ip = iph->daddr;
+    iph->saddr = dst_ip;
+    iph->daddr = src_ip;
+}
+
+static __always_inline void swap_port(struct udphdr *udph) {
+    __u16 src_port = udph->source;
+    __u16 dst_port = udph->dest;
+    udph->source = dst_port;
+    udph->dest = src_port;
+}
 
 static __always_inline void swap_mac_addresses(struct ethhdr *eth) {
     __u8 tmp[ETH_ALEN];
