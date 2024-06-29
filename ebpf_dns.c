@@ -25,7 +25,8 @@ static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_
 static __always_inline __u64 get_current_timestamp();
 static __always_inline void copy_dns_packet(struct xdp_md *ctx, void *dst, void *src, __u16 len);
 static __always_inline void update_ip_checksum(struct iphdr *iph);
-static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end);
+//static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end);
+static __always_inline void swap_mac_addresses(struct ethhdr *eth);
 //static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const void *src, __u16 len);
 #ifdef BPF_DEBUG
 static __always_inline void print_qname(char *qname, int qname_len);
@@ -188,7 +189,7 @@ int ebpf_dns(struct xdp_md *ctx) {
 
     //Update UDP header
     udph->len = bpf_htons(new_udp_len);
-    //udph->check = 0; 
+    udph->check = 0; 
     
     //Update IP header
     __u16 new_ip_len = sizeof(*iph) + new_udp_len;
@@ -211,9 +212,10 @@ int ebpf_dns(struct xdp_md *ctx) {
     update_ip_checksum(iph);
 
 	// Update the UDP checksum
-	update_udp_checksum(iph, udph, data_end);
+	//update_udp_checksum(iph, udph, data_end);
 
-    swap_mac_addresses((struct eth_hdr *)eth);
+    swap_mac_addresses(eth);
+
 
     bpf_printk("dns_payload:%x , data_end:%x, delta:%d\n", dns_payload, data_end, delta);
     
@@ -446,6 +448,7 @@ static __always_inline void update_ip_checksum(struct iphdr *iph) {
     iph->check = ~csum;
 }
 
+/*
 static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr *udph, void *data_end)
 {
     __u32 csum_buffer = 0;
@@ -480,6 +483,13 @@ static __always_inline void update_udp_checksum(struct iphdr *iph, struct udphdr
 
 	udph->check = csum;
 }
+*/
 
+static __always_inline void swap_mac_addresses(struct ethhdr *eth) {
+    __u8 tmp[ETH_ALEN];
+    __builtin_memcpy(tmp, eth->h_dest, ETH_ALEN);
+    __builtin_memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+    __builtin_memcpy(eth->h_source, tmp, ETH_ALEN);
+}
 
 char _license[] SEC("license") = "Dual MIT/GPL";
