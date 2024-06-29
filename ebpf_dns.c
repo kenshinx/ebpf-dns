@@ -23,6 +23,8 @@ static __always_inline int parse_dns_header(void *data, void *data_end, struct d
 static __always_inline int parse_dns_query(void *data, void *data_end, struct dns_query *query);
 static __always_inline int dns_cache_lookup(struct dns_query *query, struct dns_cache_msg **msg);
 static __always_inline __u64 get_current_timestamp();
+static __always_inline void copy_dns_packet(struct xdp_md *ctx, void *dst, void *src, __u16 len);
+//static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const void *src, __u16 len);
 #ifdef BPF_DEBUG
 static __always_inline void print_qname(char *qname, int qname_len);
 #endif
@@ -133,6 +135,9 @@ int ebpf_dns(struct xdp_md *ctx) {
     __builtin_memcpy(&resp_id, dns_msg->data, sizeof(__u16));
     
     __u16 dns_pkg_len = dns_msg->data_len;
+    if (dns_pkg_len > MAX_DNS_PACKET_SIZE) {
+        return XDP_PASS;
+    }
 
     // Calculate the new packet size
     //int delta = dns_payload + dns_pkg_len - data_end;
@@ -150,14 +155,45 @@ int ebpf_dns(struct xdp_md *ctx) {
         return XDP_PASS;
     }
 
-    //after bpf_xdp_adjust_tail called, data_end will be changed
+    //after bpf_xdp_adjust_tail called, recalculate all pointers
+    data = (void *)(unsigned long)ctx->data;
     data_end = (void *)(unsigned long)ctx->data_end;
 
-    if (dns_payload + dns_pkg_len > data_end) {
+    eth = data;
+    iph = data + sizeof(struct ethhdr);
+    udph = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
+
+	if ((void *)(eth + 1) > data_end)
+        return XDP_PASS;
+    if ((void *)(iph + 1) > data_end)
+        return XDP_PASS;
+    if ((void *)(udph + 1) > data_end)
+        return XDP_PASS;
+
+    if ((void *)udph + sizeof(struct udphdr) + dns_pkg_len > data_end) {
         return XDP_PASS;
     }
     
+    //__builtin_memcpy only support constant length. 
+    //So we have to in low efficient ways: copy memory byte to byte.
+    //__builtin_memcpy(dns_payload, dns_msg->data, dns_pkg_len);
     
+    if (dns_pkg_len > sizeof(dns_msg->data)) {
+        return XDP_PASS;
+    }
+    copy_dns_packet(ctx, (void *)udph + sizeof(struct udphdr), dns_msg->data, dns_pkg_len);
+
+
+    //Update UDP header
+    udph->len = bpf_htons(new_udp_len);
+    udph->check = 0; 
+    
+    //Update IP header
+    __u16 new_ip_len = sizeof(*iph) + new_udp_len;
+    iph->tot_len = bpf_htons(new_ip_len);
+    iph->check = 0;
+
+
     bpf_printk("dns_payload:%x , data_end:%x, delta:%d\n", dns_payload, data_end, delta);
     
     
@@ -319,6 +355,58 @@ static __always_inline __u64 get_current_timestamp() {
     __u64 time_s = time_ns / 1000000000; //convert nanosecond to second
     return time_s;
 }
+
+
+static __always_inline void copy_dns_packet(struct xdp_md *ctx, void *dst, void *src, __u16 len) {
+    void *data_end = (void *)(long)ctx->data_end;
+    if (dst + len > data_end || len > MAX_DNS_PACKET_SIZE) {
+        return;
+    }
+
+    char *cdst = dst;
+    char *csrc = src;
+    
+    for (__u16 i = 0; i < len; i++) {
+        if (cdst + i + 1 > (char *)data_end) {
+            break;
+        }
+        cdst[i] = csrc[i];
+    }
+}
+
+/*
+static __always_inline void safe_memcpy(struct xdp_md *ctx, void *dst, const void *src, __u16 len) {
+    void *data_end = (void *)(long)ctx->data_end;
+    if (dst + len > data_end || len > MAX_DNS_PACKET_SIZE) {
+        return;
+    }
+
+    if (len > 0) {
+        char *dst_addr = (char *)dst;
+        char *src_addr = (char *)src;
+        __u16 remaining_len = len;
+
+        while (remaining_len >= 8) {
+            if ((void *)dst_addr + 8 > data_end) {
+                break;
+            }
+            __builtin_memcpy(dst_addr, src_addr, 8);
+            src_addr += 8;
+            dst_addr += 8;
+            remaining_len -= 8;
+        }
+        while (remaining_len >= 1) {
+            if ((void *)dst_addr + 1 > data_end) {
+                break;
+            }
+            __builtin_memcpy(dst_addr, src_addr, 1);
+            src_addr += 1;
+            dst_addr += 1;
+            remaining_len -= 1;
+        }
+    }
+}
+*/
     
 
 char _license[] SEC("license") = "Dual MIT/GPL";
