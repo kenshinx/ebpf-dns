@@ -6,7 +6,7 @@ eBPF backend DNS cache server
 
 * Linux kernel version 5.7 or later 
 * Go 1.22.4
-* [ebpf-go] v0.15.0(https://ebpf-go.dev/)
+* [ebpf-go](https://ebpf-go.dev/) v0.15.0
 
 
 ## Compile
