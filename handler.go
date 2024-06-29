@@ -51,6 +51,21 @@ func (h *DNSHandler) Do(w dns.ResponseWriter, req *dns.Msg) {
 		return
 	}
 
+	if r.Opcode != dns.OpcodeQuery {
+		w.WriteMsg(r)
+		return
+	}
+
+	if q.Qclass != dns.ClassINET {
+		w.WriteMsg(r)
+		return
+	}
+
+	if q.Qtype != dns.TypeA && q.Qtype != dns.TypeAAAA && q.Qtype != dns.TypeCNAME {
+		w.WriteMsg(r)
+		return
+	}
+
 	switch r.Rcode {
 	case dns.RcodeSuccess:
 		h.setPosCache(&q, r)
