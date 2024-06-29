@@ -1,3 +1,4 @@
 *.o
 *.swp
 ebpf_dns
+ebpf-dns.code-workspace
