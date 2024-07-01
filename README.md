@@ -11,6 +11,10 @@ eBPF backend DNS cache server
 
 ## Compile
 
+First, install the Go dependency package in the current directory.
+
+> go get
+
 ### Compile all
 
 > make all
