@@ -1,6 +1,6 @@
 # ebpf-dns
 eBPF backend DNS cache server
-
+![ebpf-dns](docs/images/ebpf-dns.png)
 
 ## Dependencies
 
@@ -15,7 +15,7 @@ eBPF backend DNS cache server
 
 > make all
 
-Compile eBPF byte code and build go user space program, generate ebpf_dns.o and ebpf_dns execute file.
+Compile eBPF byte code and build go user space program, generate ebpf_dns.o and ebpf_dns executable file.
 
 ### Compile eBPF bytecode
 
@@ -28,7 +28,8 @@ Compile eBPF byte code, support  `make debug`, output more detaild ebpf logs.
 
 > make go
 
-Or in currenr directory run `go build` directly.
+You can also run go build to directly generate a binary executable file in the current directory.
+
 
 ## Run
 
