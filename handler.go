@@ -156,6 +156,9 @@ func (h *DNSHandler) makekey(q *dns.Question) cachesKey {
 }
 
 func (h *DNSHandler) getMinTTL(msg *dns.Msg) uint32 {
+	if len(msg.Answer) == 0 {
+		return 0
+	}
 	minTTL := uint32(MaxTTL)
 	for _, rr := range msg.Answer {
 		if rr.Header().Ttl < minTTL {
